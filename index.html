@@ -63,9 +63,19 @@
       </div>
     </div>
 
+    <label style="display:flex;gap:8px;align-items:center;font-weight:400;margin-top:14px">
+      <input type="checkbox" id="calm" style="width:auto"> نبرة هادئة وبطيئة (مناسبة للدعاء والأذكار)
+    </label>
+
+    <label for="style">نوع الخلفية</label>
+    <select id="style">
+      <option value="photo">صور حقيقية</option>
+      <option value="illustration">رسومات كرتونية</option>
+    </select>
+
     <label for="kw">كلمة للصور (بالإنجليزية، اختياري)</label>
-    <input id="kw" maxlength="40" placeholder="مثال: ocean, space, city">
-    <div class="hint">تُستخدم للبحث عن خلفيات الفيديو. لو تركتها فارغة تظهر خلفية ملوّنة.</div>
+    <input id="kw" maxlength="40" placeholder="مثال: kids, dinosaur, space">
+    <div class="hint">تُستخدم للبحث عن الصور تلقائيًا (لا حاجة لرفع صور). لو تركتها فارغة تظهر خلفية ملوّنة.</div>
 
     <button id="go" type="submit">أنشئ الفيديو</button>
     <div class="hint" id="left"></div>
@@ -80,7 +90,7 @@
   <div class="ad" id="ad-bottom"><!-- ضع كود أدسنس هنا -->مساحة إعلان</div>
 
   <footer>
-    الصور من <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a>.
+    الصور من <a href="https://pixabay.com" target="_blank" rel="noopener">Pixabay</a>.
     تُحذف الفيديوهات تلقائيًا بعد ساعة، فحمّل فيديوك فور جاهزيته.
     <p><a href="/about.html">من نحن</a> | <a href="/privacy.html">سياسة الخصوصية</a> | <a href="/contact.html">اتصل بنا</a></p>
   </footer>
@@ -121,7 +131,7 @@ $('f').onsubmit = async e => {
     const r = await fetch('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: $('text').value, lang: $('lang').value, voice: $('voice').value, keyword: $('kw').value }),
+      body: JSON.stringify({ text: $('text').value, lang: $('lang').value, voice: $('voice').value, keyword: $('kw').value, style: $('style').value, calm: $('calm').checked }),
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'حدث خطأ.');
