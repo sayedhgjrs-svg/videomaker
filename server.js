@@ -25,7 +25,11 @@ fs.mkdirSync(TMP, { recursive: true });
 fs.mkdirSync(OUT, { recursive: true });
 
 const VOICES = {
-  ar: ['ar-EG-SalmaNeural', 'ar-EG-ShakirNeural', 'ar-SA-HamedNeural', 'ar-SA-ZariyahNeural'],
+  ar: ['ar-EG-SalmaNeural', 'ar-EG-ShakirNeural', 'ar-SA-HamedNeural', 'ar-SA-ZariyahNeural',
+    'ar-KW-FahedNeural', 'ar-QA-MoazNeural', 'ar-OM-AbdullahNeural',
+    'ar-JO-TaimNeural', 'ar-LB-RamiNeural', 'ar-SY-LaithNeural', 'ar-IQ-BasselNeural',
+    'ar-LY-OmarNeural', 'ar-MA-JamalNeural', 'ar-TN-HediNeural', 'ar-YE-SalehNeural',
+    'ar-KW-NouraNeural', 'ar-QA-AmalNeural', 'ar-JO-SanaNeural', 'ar-SY-AmanyNeural'],
   en: ['en-US-AndrewMultilingualNeural', 'en-US-AriaNeural', 'en-US-GuyNeural', 'en-US-JennyNeural'],
 };
 const COLORS = ['0x1b2a49', '0x2d1b3d', '0x143d3a', '0x3b2a1a', '0x1f1f3d'];
@@ -41,8 +45,8 @@ function rollDay() {
 }
 
 // ---------- الطابور ----------
-const jobs = new Map();
-const queue = [];
+const jobs = new Map();   // id -> job
+const queue = [];         // ids منتظرة
 let working = false;
 
 function run(cmd, args, opts = {}) {
@@ -68,12 +72,12 @@ function probeDuration(file) {
   });
 }
 
-async function fetchImages(keyword, count, dir) {
+async function fetchImages(keyword, count, dir, style) {
   if (!keyword || !(CFG.pixabayKey || CFG.pexelsKey)) return [];
   try {
     let urls = [];
     if (CFG.pixabayKey) {
-      const url = `https://pixabay.com/api/?key=${encodeURIComponent(CFG.pixabayKey)}&q=${encodeURIComponent(keyword)}&image_type=photo&orientation=vertical&safesearch=true&per_page=${Math.max(3, count)}`;
+      const url = `https://pixabay.com/api/?key=${encodeURIComponent(CFG.pixabayKey)}&q=${encodeURIComponent(keyword)}&image_type=${style === 'illustration' ? 'illustration' : 'photo'}&orientation=vertical&safesearch=true&per_page=${Math.max(3, count)}`;
       const r = await fetch(url);
       if (r.ok) {
         const data = await r.json();
@@ -109,37 +113,45 @@ async function processJob(job) {
     // 1) الصوت + الترجمة
     job.step = 'voice';
     fs.writeFileSync(path.join(dir, 'text.txt'), job.text, 'utf8');
-    await run(CFG.edgeTts, ['--voice', job.voice, '--file', 'text.txt',
-      '--write-media', 'voice.mp3', '--write-subtitles', 'subs.srt'], { cwd: dir, timeout: 90000 });
+    const ttsArgs = ['--voice', job.voice, '--file', 'text.txt',
+      '--write-media', 'voice.mp3', '--write-subtitles', 'subs.srt'];
+    if (job.calm) ttsArgs.push('--rate=-15%', '--pitch=-5Hz');
+    await run(CFG.edgeTts, ttsArgs, { cwd: dir, timeout: 90000 });
     const dur = await probeDuration(path.join(dir, 'voice.mp3'));
     if (dur > 75) throw new Error('الفيديو أطول من الحد المسموح');
 
     // 2) الخلفيات
     job.step = 'images';
     const n = Math.min(8, Math.max(3, Math.ceil(dur / 6)));
-    const imgs = await fetchImages(job.keyword, n, dir);
+    const imgs = await fetchImages(job.keyword, n, dir, job.style);
+    console.log('job', job.id, 'keyword=[' + job.keyword + '] style=' + job.style + ' images=' + imgs.length);
 
     // 3) التجميع
     job.step = 'render';
-    const sub = "subtitles=subs.srt:force_style='FontName=Noto Sans Arabic,FontSize=15,Bold=1,Alignment=2,MarginV=140,Outline=2,Shadow=0,PrimaryColour=&H00FFFFFF'";
-    const vf = `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,fps=25,${sub},format=yuv420p`;
-    let input;
+    const sub = "subtitles=subs.srt:force_style='FontName=DejaVu Sans,FontSize=15,Bold=1,Alignment=2,MarginV=140,Outline=2,Shadow=0,PrimaryColour=&H00FFFFFF'";
+    const outName = `${job.id}.mp4`;
     if (imgs.length) {
-      const per = dur / imgs.length;
-      let list = '';
-      imgs.forEach(f => { list += `file '${f}'\nduration ${per.toFixed(3)}\n`; });
-      list += `file '${imgs[imgs.length - 1]}'\n`;
-      fs.writeFileSync(path.join(dir, 'list.txt'), list);
-      input = ['-f', 'concat', '-safe', '0', '-i', 'list.txt'];
+      const frames = Math.ceil((dur / imgs.length) * 25) + 1;
+      const fit = 'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280';
+      const zoom = `zoompan=z='min(zoom+0.0008,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=25`;
+      const parts = imgs.map((f, i) => `[${i}:v]${fit},${zoom}[v${i}]`);
+      const tags = imgs.map((f, i) => `[v${i}]`).join('');
+      const graph = `${parts.join(';')};${tags}concat=n=${imgs.length}:v=1:a=0,${sub},format=yuv420p[v]`;
+      const inputs = [];
+      imgs.forEach(f => inputs.push('-i', f));
+      await run('ffmpeg', ['-y', '-threads', '1', ...inputs, '-i', 'voice.mp3',
+        '-filter_complex', graph, '-map', '[v]', '-map', `${imgs.length}:a`,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
+        '-c:a', 'aac', '-b:a', '96k', '-shortest', '-movflags', '+faststart',
+        path.join(OUT, outName)], { cwd: dir, timeout: 300000 });
     } else {
       const c = COLORS[Math.floor(Math.random() * COLORS.length)];
-      input = ['-f', 'lavfi', '-i', `color=c=${c}:s=720x1280:r=25:d=${(dur + 0.5).toFixed(2)}`];
+      const input = ['-f', 'lavfi', '-i', `color=c=${c}:s=720x1280:r=25:d=${(dur + 0.5).toFixed(2)}`];
+      await run('ffmpeg', ['-y', '-threads', '1', ...input, '-i', 'voice.mp3',
+        '-vf', `${sub},format=yuv420p`, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
+        '-c:a', 'aac', '-b:a', '96k', '-shortest', '-movflags', '+faststart',
+        path.join(OUT, outName)], { cwd: dir, timeout: 300000 });
     }
-    const outName = `${job.id}.mp4`;
-    await run('ffmpeg', ['-y', '-threads', '1', ...input, '-i', 'voice.mp3',
-      '-vf', vf, '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
-      '-c:a', 'aac', '-b:a', '96k', '-shortest', '-movflags', '+faststart',
-      path.join(OUT, outName)], { cwd: dir, timeout: 300000 });
 
     job.status = 'done';
     job.url = `/videos/${outName}`;
@@ -147,6 +159,7 @@ async function processJob(job) {
     console.error(`[job ${job.id}]`, e.message);
     job.status = 'error';
     job.error = 'تعذّر إنشاء الفيديو. جرّب نصًا أقصر أو حاول بعد قليل.';
+    // رجّع المحاولة للزائر لأن الفشل مش ذنبه
     ipCount.set(job.ip, Math.max(0, (ipCount.get(job.ip) || 1) - 1));
     siteCount = Math.max(0, siteCount - 1);
   } finally {
@@ -186,7 +199,7 @@ app.get('/api/info', (req, res) => {
 
 app.post('/api/generate', (req, res) => {
   rollDay();
-  const { text, lang, voice, keyword } = req.body || {};
+  const { text, lang, voice, keyword, style, calm } = req.body || {};
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
 
   if (!clean) return res.status(400).json({ error: 'اكتب النص الأول.' });
@@ -204,6 +217,8 @@ app.post('/api/generate', (req, res) => {
   const id = crypto.randomBytes(8).toString('hex');
   const job = {
     id, ip: req.ip, text: clean, voice: v,
+    style: style === 'illustration' ? 'illustration' : 'photo',
+    calm: calm === true,
     keyword: String(keyword || '').replace(/[^\p{L}\p{N} ]/gu, '').slice(0, 40).trim(),
     status: 'queued', step: '', created: Date.now(),
   };
