@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const CFG = {
   port: +process.env.PORT || 3000,
   pexelsKey: process.env.PEXELS_KEY || '',
+  pixabayKey: process.env.PIXABAY_KEY || '',
   maxPerIpDay: +process.env.MAX_PER_IP_DAY || 3,
   maxSiteDay: +process.env.MAX_SITE_DAY || 100,
   maxQueue: +process.env.MAX_QUEUE || 5,
@@ -67,16 +68,28 @@ function probeDuration(file) {
   });
 }
 
-async function fetchPexels(keyword, count, dir) {
-  if (!CFG.pexelsKey || !keyword) return [];
+async function fetchImages(keyword, count, dir) {
+  if (!keyword || !(CFG.pixabayKey || CFG.pexelsKey)) return [];
   try {
-    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(keyword)}&orientation=portrait&per_page=${count}`;
-    const r = await fetch(url, { headers: { Authorization: CFG.pexelsKey } });
-    if (!r.ok) return [];
-    const data = await r.json();
+    let urls = [];
+    if (CFG.pixabayKey) {
+      const url = `https://pixabay.com/api/?key=${encodeURIComponent(CFG.pixabayKey)}&q=${encodeURIComponent(keyword)}&image_type=photo&orientation=vertical&safesearch=true&per_page=${Math.max(3, count)}`;
+      const r = await fetch(url);
+      if (r.ok) {
+        const data = await r.json();
+        urls = (data.hits || []).map(h => h.largeImageURL || h.webformatURL).filter(Boolean);
+      }
+    } else {
+      const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(keyword)}&orientation=portrait&per_page=${count}`;
+      const r = await fetch(url, { headers: { Authorization: CFG.pexelsKey } });
+      if (r.ok) {
+        const data = await r.json();
+        urls = (data.photos || []).map(p => p.src.portrait);
+      }
+    }
     const files = [];
-    for (const [i, ph] of (data.photos || []).slice(0, count).entries()) {
-      const img = await fetch(ph.src.portrait);
+    for (const [i, u] of urls.slice(0, count).entries()) {
+      const img = await fetch(u);
       if (!img.ok) continue;
       const f = path.join(dir, `img${i}.jpg`);
       fs.writeFileSync(f, Buffer.from(await img.arrayBuffer()));
@@ -84,7 +97,7 @@ async function fetchPexels(keyword, count, dir) {
     }
     return files;
   } catch (e) {
-    console.error('pexels error:', e.message);
+    console.error('images error:', e.message);
     return [];
   }
 }
@@ -104,7 +117,7 @@ async function processJob(job) {
     // 2) الخلفيات
     job.step = 'images';
     const n = Math.min(8, Math.max(3, Math.ceil(dur / 6)));
-    const imgs = await fetchPexels(job.keyword, n, dir);
+    const imgs = await fetchImages(job.keyword, n, dir);
 
     // 3) التجميع
     job.step = 'render';
