@@ -75,7 +75,7 @@
 
     <label for="kw">كلمة للصور (بالإنجليزية، اختياري)</label>
     <input id="kw" maxlength="40" placeholder="مثال: kids, dinosaur, space">
-    <div class="hint">تُستخدم للبحث عن الصور تلقائيًا (لا حاجة لرفع صور). لو تركتها فارغة تظهر خلفية ملوّنة.</div>
+    <div class="hint">تُستخدم للبحث عن الصور تلقائيًا (لا حاجة لرفع صور). لو تركتها فارغة نختار لك صورًا عامة.</div>
 
     <button id="go" type="submit">أنشئ الفيديو</button>
     <div class="hint" id="left"></div>
@@ -107,9 +107,34 @@ async function loadInfo() {
   updateCount();
   $('left').textContent = `المتبقي لك اليوم: ${info.left} من ${info.perIp}`;
 }
+const VOICE_NAMES = {
+  'ar-EG-SalmaNeural': 'مصرية - سلمى (أنثى)',
+  'ar-EG-ShakirNeural': 'مصري - شاكر (ذكر)',
+  'ar-SA-HamedNeural': 'سعودي - حامد (ذكر)',
+  'ar-SA-ZariyahNeural': 'سعودية - زارية (أنثى)',
+  'ar-KW-FahedNeural': 'كويتي - فهد (ذكر)',
+  'ar-KW-NouraNeural': 'كويتية - نورة (أنثى)',
+  'ar-QA-MoazNeural': 'قطري - معاذ (ذكر)',
+  'ar-QA-AmalNeural': 'قطرية - أمل (أنثى)',
+  'ar-OM-AbdullahNeural': 'عماني - عبدالله (ذكر)',
+  'ar-JO-TaimNeural': 'أردني - تيم (ذكر)',
+  'ar-JO-SanaNeural': 'أردنية - سناء (أنثى)',
+  'ar-LB-RamiNeural': 'لبناني - رامي (ذكر)',
+  'ar-SY-LaithNeural': 'سوري - ليث (ذكر)',
+  'ar-SY-AmanyNeural': 'سورية - أماني (أنثى)',
+  'ar-IQ-BasselNeural': 'عراقي - باسل (ذكر)',
+  'ar-LY-OmarNeural': 'ليبي - عمر (ذكر)',
+  'ar-MA-JamalNeural': 'مغربي - جمال (ذكر)',
+  'ar-TN-HediNeural': 'تونسي - الهادي (ذكر)',
+  'ar-YE-SalehNeural': 'يمني - صالح (ذكر)',
+  'en-US-AndrewMultilingualNeural': 'Andrew (Male)',
+  'en-US-AriaNeural': 'Aria (Female)',
+  'en-US-GuyNeural': 'Guy (Male)',
+  'en-US-JennyNeural': 'Jenny (Female)'
+};
 function fillVoices() {
   const list = info.voices[$('lang').value];
-  $('voice').innerHTML = list.map(v => `<option value="${v}">${v.replace('Neural','').replace('Multilingual','')}</option>`).join('');
+  $('voice').innerHTML = list.map(v => `<option value="${v}">${VOICE_NAMES[v] || v}</option>`).join('');
 }
 function updateCount() { $('cnt').textContent = `${$('text').value.length} / ${info ? info.maxChars : ''}`; }
 
