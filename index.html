@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>صانع الفيديو المجاني | Free Video Maker</title>
+<meta name="description" content="حوّل نصك إلى فيديو قصير بصوت عربي أو إنجليزي مجانًا.">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#10161c; --panel:#18212a; --line:#2a3744; --text:#eef2f5; --muted:#93a1ae;
+    --accent:#f2b84b; --accent-ink:#201602; --err:#ff8a7a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Cairo',system-ui,sans-serif;line-height:1.7}
+  .wrap{max-width:720px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:2rem;font-weight:800;margin:8px 0 4px}
+  .sub{color:var(--muted);margin:0 0 24px}
+  .ad{min-height:90px;border:1px dashed var(--line);border-radius:8px;margin:16px 0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.85rem}
+  form,.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
+  label{display:block;font-weight:600;margin:14px 0 6px}
+  label:first-child{margin-top:0}
+  textarea,input,select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit}
+  textarea{min-height:150px;resize:vertical}
+  textarea:focus,input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:520px){.row{grid-template-columns:1fr}}
+  .hint{color:var(--muted);font-size:.85rem;margin-top:4px}
+  .count{text-align:left;direction:ltr}
+  button{margin-top:18px;width:100%;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:12px;font:inherit;font-weight:800;font-size:1.05rem;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  #status{margin-top:20px;display:none}
+  .bar{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:12px}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .6s}
+  .err{color:var(--err)}
+  video{width:100%;max-width:340px;display:block;margin:12px auto;border-radius:8px;background:#000}
+  a.dl{display:block;text-align:center;background:var(--accent);color:var(--accent-ink);padding:10px;border-radius:8px;text-decoration:none;font-weight:800;max-width:340px;margin:0 auto}
+  footer{color:var(--muted);font-size:.85rem;margin-top:32px;text-align:center}
+  footer a{color:var(--muted)}
+  @media(prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>حوّل نصك إلى فيديو</h1>
+  <p class="sub">فيديو عمودي قصير بصوت عربي أو إنجليزي، مجانًا وبدون تسجيل.</p>
+
+  <div class="ad" id="ad-top"><!-- ضع كود أدسنس هنا -->مساحة إعلان</div>
+
+  <form id="f">
+    <label for="text">النص</label>
+    <textarea id="text" required placeholder="اكتب هنا ما تريد أن يُقال في الفيديو (حتى 60 ثانية تقريبًا)"></textarea>
+    <div class="hint count" id="cnt">0</div>
+
+    <div class="row">
+      <div>
+        <label for="lang">اللغة</label>
+        <select id="lang"><option value="ar">العربية</option><option value="en">English</option></select>
+      </div>
+      <div>
+        <label for="voice">الصوت</label>
+        <select id="voice"></select>
+      </div>
+    </div>
+
+    <label for="kw">كلمة للصور (بالإنجليزية، اختياري)</label>
+    <input id="kw" maxlength="40" placeholder="مثال: ocean, space, city">
+    <div class="hint">تُستخدم للبحث عن خلفيات الفيديو. لو تركتها فارغة تظهر خلفية ملوّنة.</div>
+
+    <button id="go" type="submit">أنشئ الفيديو</button>
+    <div class="hint" id="left"></div>
+  </form>
+
+  <div class="box" id="status" aria-live="polite">
+    <div id="msg"></div>
+    <div class="bar"><i id="pb"></i></div>
+    <div id="result"></div>
+  </div>
+
+  <div class="ad" id="ad-bottom"><!-- ضع كود أدسنس هنا -->مساحة إعلان</div>
+
+  <footer>
+    الصور من <a href="https://www.pexels.com" target="_blank" rel="noopener">Pexels</a>.
+    تُحذف الفيديوهات تلقائيًا بعد ساعة، فحمّل فيديوك فور جاهزيته.
+    <p><a href="/about.html">من نحن</a> | <a href="/privacy.html">سياسة الخصوصية</a> | <a href="/contact.html">اتصل بنا</a></p>
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let info = null;
+
+async function loadInfo() {
+  info = await (await fetch('/api/info')).json();
+  $('text').maxLength = info.maxChars;
+  fillVoices();
+  updateCount();
+  $('left').textContent = `المتبقي لك اليوم: ${info.left} من ${info.perIp}`;
+}
+function fillVoices() {
+  const list = info.voices[$('lang').value];
+  $('voice').innerHTML = list.map(v => `<option value="${v}">${v.replace('Neural','').replace('Multilingual','')}</option>`).join('');
+}
+function updateCount() { $('cnt').textContent = `${$('text').value.length} / ${info ? info.maxChars : ''}`; }
+
+$('lang').onchange = () => { fillVoices(); $('text').dir = $('lang').value === 'en' ? 'ltr' : 'rtl'; };
+$('text').oninput = updateCount;
+
+const STEPS = { queued: 10, voice: 30, images: 55, render: 80 };
+const LABEL = { voice: 'جارٍ توليد الصوت...', images: 'جارٍ تجهيز الصور...', render: 'جارٍ تجميع الفيديو...' };
+
+$('f').onsubmit = async e => {
+  e.preventDefault();
+  $('go').disabled = true;
+  $('status').style.display = 'block';
+  $('result').innerHTML = '';
+  $('msg').className = '';
+  $('msg').textContent = 'جارٍ إرسال الطلب...';
+  $('pb').style.width = '5%';
+  try {
+    const r = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: $('text').value, lang: $('lang').value, voice: $('voice').value, keyword: $('kw').value }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'حدث خطأ.');
+    poll(d.id);
+  } catch (err) { fail(err.message); }
+};
+
+function fail(m) {
+  $('msg').className = 'err';
+  $('msg').textContent = m;
+  $('pb').style.width = '0';
+  $('go').disabled = false;
+  loadInfo();
+}
+
+async function poll(id) {
+  try {
+    const d = await (await fetch('/api/status/' + id)).json();
+    if (d.status === 'done') {
+      $('pb').style.width = '100%';
+      $('msg').textContent = 'الفيديو جاهز!';
+      $('result').innerHTML = `<video controls playsinline src="${d.url}"></video><a class="dl" href="${d.url}" download>تحميل الفيديو</a>`;
+      $('go').disabled = false;
+      loadInfo();
+      return;
+    }
+    if (d.status === 'error') return fail(d.error);
+    if (d.status === 'queued') $('msg').textContent = `في الطابور، ترتيبك: ${d.position}`;
+    else $('msg').textContent = LABEL[d.step] || 'جارٍ المعالجة...';
+    $('pb').style.width = (STEPS[d.step || d.status] || 10) + '%';
+    setTimeout(() => poll(id), 2000);
+  } catch { setTimeout(() => poll(id), 3000); }
+}
+
+loadInfo();
+</script>
+</body>
+</html>
